@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Crashou59/miage-action/compare/v1.0.0...v1.1.0) (2022-09-28)
+
+
+### Features
+
+* contact ([608cc5f](https://github.com/Crashou59/miage-action/commit/608cc5f27c2c4a7f6ba75c04cd075949cb613db5))
+
 ## 1.0.0 (2022-09-28)
 
 
