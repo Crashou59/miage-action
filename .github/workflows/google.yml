@@ -26,14 +26,33 @@ env:
   IMAGE: static-site
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+    if: ${{ github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: google-github-actions/release-please-action@v3
+        id: release
+        with:
+          release-type: simple
+          package-name: Release
+          default-branch: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   setup-build-publish:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
     environment: production
+    needs: [release-please]
+    if: ${{needs.release-please.outputs.release_created}}
 
     permissions:
       contents: "read"
       id-token: "write"
+
+    outputs:
+      APP_VERSION: ${{steps.config.outputs.APP_VERSION}}
 
     steps:
       - name: Checkout
@@ -44,19 +63,24 @@ jobs:
         with:
           GKE_CLUSTER: ${{ env.GKE_CLUSTER }}
           GKE_ZONE: ${{ env.GKE_ZONE }}
+      - name: Config Envs
+        id: config
+        run: |
+          APP_VERSION=$(cat version.txt)
+          echo "::set-output name=APP_VERSION::$APP_VERSION"
 
       # Build the Docker image
       - name: Build
         run: |-
           docker build \
-            --tag "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA" \
+            --tag "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{steps.config.outputs.APP_VERSION}}" \
             --build-arg GITHUB_SHA="$GITHUB_SHA" \
             --build-arg GITHUB_REF="$GITHUB_REF" \
             .
     # Push the Docker image to Google Artifact Registry
       - name: Publish
         run: |-
-          docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA"
+          docker push "$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{steps.config.outputs.APP_VERSION}}"
  
   deploy:
     name: Deploy
@@ -86,7 +110,7 @@ jobs:
       - name: Deploy
         run: |-
           # replacing the image name in the k8s template
-          ./kustomize edit set image LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG=$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA
+          ./kustomize edit set image LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG=$GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{needs.setup-build-publish.outputs.APP_VERSION}}
           ./kustomize build . | kubectl apply -f -
           kubectl rollout status deployment/$DEPLOYMENT_NAME
           kubectl get services -o wide
