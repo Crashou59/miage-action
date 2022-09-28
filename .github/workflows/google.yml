@@ -26,7 +26,7 @@ env:
   IMAGE: static-site
 
 jobs:
-  setup-build-publish-deploy:
+  setup-build-publish:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
     environment: production
@@ -62,7 +62,7 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     environment: production
-    needs: [setup-build-publish-deploy]
+    needs: [setup-build-publish]
 
     permissions:
       contents: "read"
@@ -90,3 +90,27 @@ jobs:
           ./kustomize build . | kubectl apply -f -
           kubectl rollout status deployment/$DEPLOYMENT_NAME
           kubectl get services -o wide
+
+  deploy-ghpage:
+    needs: [setup-build-publish]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Pages
+        uses: actions/configure-pages@v2
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          # Upload entire repository
+          path: "."
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
